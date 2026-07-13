@@ -70,6 +70,7 @@ private:
     juce::TextButton settingsButton { "Settings" };
 
     juce::Label chordNameLabel;
+    juce::Label representativeCaption { {}, "STRICT REPRESENTATIVE" };
     juce::Label romanLabel;
     juce::Label functionLabel;
     juce::Label possibleLabel;

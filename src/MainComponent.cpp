@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <map>
 
 namespace
@@ -134,35 +135,91 @@ void GrandStaffComponent::paint(juce::Graphics& graphics)
         return;
     }
 
-    const auto drawNote = [&](const int midiNote, const std::string& name)
+    constexpr auto noteHeadWidth = 15.0f;
+    constexpr auto noteHeadHeight = 9.5f;
+    constexpr auto noteSeparation = 7.0f;
+
+    struct PositionedNote
     {
+        int midiNote = 0;
+        std::string name;
+        bool treble = false;
+        float y = 0.0f;
+        float horizontalOffset = 0.0f;
+    };
+
+    std::vector<PositionedNote> positionedNotes;
+    positionedNotes.reserve(notes.size());
+    for (size_t index = 0; index < notes.size(); ++index)
+    {
+        const auto midiNote = notes[index];
+        auto name = index < names.size() ? names[index] : "C";
         const auto treble = midiNote >= 60;
         const auto staffTop = treble ? trebleTop : bassTop;
         const auto staffBottom = staffTop + 4.0f * lineGap;
         const auto reference = treble ? 4 * 7 + letterIndex('E') : 2 * 7 + letterIndex('G');
         const auto y = staffBottom - (diatonicValue(midiNote, name) - reference) * lineGap * 0.5f;
-        const auto noteX = bounds.getCentreX() + (midiNote % 2 == 0 ? -2.5f : 2.5f);
+        positionedNotes.push_back({ midiNote, std::move(name), treble, y });
+    }
+
+    // Adjacent staff positions (for example F-G) share too much vertical space for
+    // full-sized noteheads. Alternate columns within each staff so both remain legible.
+    for (const auto treble : { false, true })
+    {
+        std::vector<PositionedNote*> staffNotes;
+        for (auto& note : positionedNotes)
+            if (note.treble == treble)
+                staffNotes.push_back(&note);
+
+        std::sort(staffNotes.begin(), staffNotes.end(), [](const auto* leftNote, const auto* rightNote)
+        {
+            return leftNote->y < rightNote->y;
+        });
+
+        for (size_t index = 1; index < staffNotes.size(); ++index)
+        {
+            auto& previous = *staffNotes[index - 1];
+            auto& current = *staffNotes[index];
+            if (std::abs(current.y - previous.y) >= noteHeadHeight)
+                continue;
+
+            if (previous.horizontalOffset == 0.0f)
+                previous.horizontalOffset = -noteSeparation;
+            current.horizontalOffset = previous.horizontalOffset < 0.0f ? noteSeparation : -noteSeparation;
+        }
+    }
+
+    const auto drawNote = [&](const PositionedNote& note)
+    {
+        const auto staffTop = note.treble ? trebleTop : bassTop;
+        const auto staffBottom = staffTop + 4.0f * lineGap;
+        const auto noteX = bounds.getCentreX() + note.horizontalOffset;
 
         graphics.setColour(ink);
-        for (auto ledgerY = staffTop - lineGap; ledgerY >= y - 0.5f; ledgerY -= lineGap)
+        for (auto ledgerY = staffTop - lineGap; ledgerY >= note.y - 0.5f; ledgerY -= lineGap)
             graphics.drawLine(noteX - 10.0f, ledgerY, noteX + 10.0f, ledgerY, 1.0f);
-        for (auto ledgerY = staffBottom + lineGap; ledgerY <= y + 0.5f; ledgerY += lineGap)
+        for (auto ledgerY = staffBottom + lineGap; ledgerY <= note.y + 0.5f; ledgerY += lineGap)
             graphics.drawLine(noteX - 10.0f, ledgerY, noteX + 10.0f, ledgerY, 1.0f);
 
-        graphics.fillEllipse(noteX - 6.5f, y - 4.5f, 13.0f, 9.0f);
-        graphics.drawLine(noteX + 5.5f, y, noteX + 5.5f, y - 32.0f, 1.4f);
+        // Whole notes are open noteheads and do not carry stems.
+        graphics.setColour(surface);
+        graphics.fillEllipse(noteX - noteHeadWidth * 0.5f, note.y - noteHeadHeight * 0.5f,
+                             noteHeadWidth, noteHeadHeight);
+        graphics.setColour(ink);
+        graphics.drawEllipse(noteX - noteHeadWidth * 0.5f, note.y - noteHeadHeight * 0.5f,
+                             noteHeadWidth, noteHeadHeight, 1.3f);
 
-        if (name.find('#') != std::string::npos || name.find('b') != std::string::npos)
+        if (note.name.find('#') != std::string::npos || note.name.find('b') != std::string::npos)
         {
             graphics.setFont(musicFont(16.0f));
-            graphics.drawText(name.find('#') != std::string::npos ? sharp : flat,
-                              static_cast<int>(noteX - 26.0f), static_cast<int>(y - 10.0f), 16, 20,
+            graphics.drawText(note.name.find('#') != std::string::npos ? sharp : flat,
+                              static_cast<int>(noteX - 26.0f), static_cast<int>(note.y - 10.0f), 16, 20,
                               juce::Justification::centred);
         }
     };
 
-    for (size_t index = 0; index < notes.size(); ++index)
-        drawNote(notes[index], index < names.size() ? names[index] : "C");
+    for (const auto& note : positionedNotes)
+        drawNote(note);
 }
 
 void PianoKeyboardDisplay::setActiveNotes(std::vector<int> midiNotes)
@@ -268,11 +325,13 @@ MainComponent::MainComponent(juce::ApplicationProperties& properties)
         addAndMakeVisible(label);
     };
     styleAnalysisLabel(chordNameLabel, 51.0f, ink);
+    styleAnalysisLabel(representativeCaption, 11.0f, mutedInk);
     styleAnalysisLabel(romanLabel, 19.0f, mutedInk);
     styleAnalysisLabel(functionLabel, 20.0f, accent);
     styleAnalysisLabel(possibleLabel, 14.0f, mutedInk);
     styleAnalysisLabel(activeNotesLabel, 19.0f, ink);
     chordNameLabel.setText(emDash, juce::dontSendNotification);
+    representativeCaption.setText("STRICT REPRESENTATIVE", juce::dontSendNotification);
     romanLabel.setText(juce::String("Roman numeral  ") + emDash, juce::dontSendNotification);
     functionLabel.setText(juce::String("Harmonic function  ") + emDash, juce::dontSendNotification);
 
@@ -336,7 +395,8 @@ void MainComponent::resized()
     settingsButton.setBounds(topBar.removeFromRight(100).reduced(0, 7));
 
     bounds.removeFromTop(25);
-    chordNameLabel.setBounds(bounds.removeFromTop(66));
+    representativeCaption.setBounds(bounds.removeFromTop(15));
+    chordNameLabel.setBounds(bounds.removeFromTop(58));
     romanLabel.setBounds(bounds.removeFromTop(28));
     functionLabel.setBounds(bounds.removeFromTop(28));
     possibleLabel.setBounds(bounds.removeFromTop(26));
@@ -434,10 +494,12 @@ void MainComponent::updateAnalysis()
     activeNotesLabel.setText(names.isEmpty() ? emDash : names.joinIntoString(juce::String("  ") + bullet + "  "),
                              juce::dontSendNotification);
 
+    const auto& displayedInterpretations = analysis.strictInterpretations.empty()
+        ? analysis.possibleInterpretations : analysis.strictInterpretations;
     juce::StringArray interpretations;
-    for (const auto& candidate : analysis.possibleInterpretations)
+    for (const auto& candidate : displayedInterpretations)
         interpretations.add(juce::String(candidate.name));
-    possibleLabel.setText(interpretations.isEmpty() ? "" : "Possible:  " + interpretations.joinIntoString("   |   "),
+    possibleLabel.setText(interpretations.isEmpty() ? "" : "Also valid:  " + interpretations.joinIntoString("   |   "),
                           juce::dontSendNotification);
 
     grandStaff.setNotes(notes, analysis.activeNoteNames,

@@ -40,6 +40,7 @@ struct AnalysisResult
     std::string romanNumeral = "—";
     std::string harmonicFunction = "—";
     std::vector<std::string> activeNoteNames;
+    std::vector<ChordCandidate> strictInterpretations;
     std::vector<ChordCandidate> possibleInterpretations;
 };
 

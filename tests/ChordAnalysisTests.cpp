@@ -30,6 +30,12 @@ bool hasCandidate(const chord::AnalysisResult& result, const chord::CandidateKin
                        [kind](const chord::ChordCandidate& candidate) { return candidate.kind == kind; });
 }
 
+bool hasStrictCandidateName(const chord::AnalysisResult& result, const std::string& name)
+{
+    return std::any_of(result.strictInterpretations.begin(), result.strictInterpretations.end(),
+                       [&name](const chord::ChordCandidate& candidate) { return candidate.name == name; });
+}
+
 } // namespace
 
 int main()
@@ -57,6 +63,11 @@ int main()
     const auto cMajor = analyze({ 48, 52, 55 });
     expect(cMajor.chordName == "C", "recognises C major triad");
     expect(!cMajor.possibleInterpretations.empty(), "offers alternate interpretations when available");
+
+    const auto strictVoicing = analyze({ 48, 51, 53 }); // C3, Eb3, F3
+    expect(strictVoicing.chordName == "Cmadd11(no5)", "uses a strict representative name for C-Eb-F");
+    expect(hasStrictCandidateName(strictVoicing, "F7(no3)/C"), "keeps the fully explained F reading as an alternative");
+    expect(!hasStrictCandidateName(strictVoicing, "F5/C"), "does not silently discard an extra note for a power chord");
 
     const auto rootless = analyze({ 52, 58, 62 });
     expect(hasCandidate(rootless, chord::CandidateKind::rootless), "offers rootless jazz voicing as a possible interpretation");

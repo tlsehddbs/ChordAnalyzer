@@ -626,6 +626,9 @@ AnalysisResult ChordAnalyzer::analyze(const std::vector<int>& midiNotes, const K
     sortCandidates(exactCandidates);
     sortCandidates(inferredCandidates);
 
+    // Strict representative policy: buildCandidate accepts a candidate only after every
+    // played pitch class has been accounted for as a chord tone, tension, or explicit
+    // omission. The highest-ranked non-inferred candidate is the concise main name.
     const DetailedCandidate* primary = exactCandidates.empty() ? nullptr : &exactCandidates.front();
     if (primary != nullptr)
     {
@@ -642,6 +645,18 @@ AnalysisResult ChordAnalyzer::analyze(const std::vector<int>& midiNotes, const K
     }
 
     result.activeNoteNames = spellActiveNotes(sortedNotes, primary, key);
+
+    // Equivalent strict readings retain a sounded root and account for every pitch
+    // class. They are kept separate from the broader, inferred-root suggestions.
+    std::set<std::string> strictSeen;
+    if (primary != nullptr) strictSeen.insert(primary->publicCandidate.name);
+    for (const auto& candidate : exactCandidates)
+    {
+        if (result.strictInterpretations.size() == 2)
+            break;
+        if (strictSeen.insert(candidate.publicCandidate.name).second)
+            result.strictInterpretations.push_back(candidate.publicCandidate);
+    }
 
     std::set<std::string> seen;
     if (primary != nullptr) seen.insert(primary->publicCandidate.name);
