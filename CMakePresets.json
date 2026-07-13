@@ -11,6 +11,16 @@
       }
     },
     {
+      "name": "macos-universal-release",
+      "displayName": "macOS Universal Release",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/macos-universal-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64"
+      }
+    },
+    {
       "name": "macos-debug",
       "displayName": "macOS Debug",
       "generator": "Xcode",
