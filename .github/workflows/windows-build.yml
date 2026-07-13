@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # The CMake preset requests the Visual Studio 2022 generator explicitly.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
